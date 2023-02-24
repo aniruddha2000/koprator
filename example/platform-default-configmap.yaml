@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: platform-default-configmap
+  namespace: kube-system
+data:
+  platform-default: |
+    annotations:
+      - name: operator
+        value: type
+      - name: author
+        value: Aniruddha
