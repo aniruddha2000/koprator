@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"gopkg.in/yaml.v3"
+	"gopkg.in/yaml.v2"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -14,11 +14,11 @@ import (
 )
 
 type ConfigMapSubscribtion struct {
-	watcherInterface             watch.Interface
-	Client                       kubernetes.Interface
-	Ctx                          context.Context
-	platformConfigMapAnnotations *PlatformConfig
-	paltformConfigPhase          watch.EventType
+	watcherInterface    watch.Interface
+	Client              kubernetes.Interface
+	Ctx                 context.Context
+	platformConfig      *PlatformConfig
+	paltformConfigPhase watch.EventType
 }
 
 const (
@@ -68,10 +68,10 @@ func (c *ConfigMapSubscribtion) Reconcile(object runtime.Object, event watch.Eve
 			klog.Error(err)
 			return
 		}
-		c.platformConfigMapAnnotations = &unmarshalledData
+		c.platformConfig = &unmarshalledData
 
 	case watch.Deleted:
-		c.platformConfigMapAnnotations = nil
+		c.platformConfig = nil
 
 	case watch.Modified:
 	}
