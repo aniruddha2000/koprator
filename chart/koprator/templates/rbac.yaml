@@ -4,8 +4,11 @@ metadata:
   name: koprator-clusterrole
 rules:
   - apiGroups: [""]
-    resources: ["pods", "ConfigMap"]
+    resources: ["configmaps"]
     verbs: ["watch"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["watch", "update"]
 ---
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
