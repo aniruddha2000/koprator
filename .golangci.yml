@@ -1,0 +1,56 @@
+run:
+  go: "1.19"
+  allow-parallel-runners: true
+linters:
+  enable-all: true
+  disable:
+    - nosnakecase
+    - structcheck
+    - deadcode
+    - maligned
+    - exhaustivestruct
+    - ifshort
+    - golint
+    - scopelint
+    - interfacer
+    - varcheck
+    - rowserrcheck
+    - sqlclosecheck
+    - structcheck
+    - wastedassign
+    - gci
+    - exhaustruct
+    - wsl
+    - lll
+    - ireturn
+    - godox
+    - wrapcheck
+    - exhaustive
+    - tagliatelle
+    - nlreturn
+    - goerr113
+    - gochecknoglobals
+    - unconvert
+    - funlen
+    - dupl
+    - paralleltest
+
+linters-settings:
+  varnamelen:
+    ignore-names:
+      - s
+      - w
+      - id
+      - v1
+      - tt
+      - ok
+    ignore-decls:
+      - t testing.T
+  gofumpt:
+    extra-rules: false
+    lang-version: "1.19"
+
+issues:
+  include:
+    - EXC0012
+    - EXC0014
