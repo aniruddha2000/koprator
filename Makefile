@@ -1,3 +1,12 @@
+.PHONY: docker
+docker:
+	docker build -t aniruddhabasak/koprator:latest .
+
+.PHONY: docker-push
+docker-push:
+	docker push aniruddhabasak/koprator:latest
+
+
 .PHONY: docker-dev
 docker-dev:
 	docker-compose up
