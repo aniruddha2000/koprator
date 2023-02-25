@@ -1,0 +1,21 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: koprator-clusterrole
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "ConfigMap"]
+    verbs: ["watch"]
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: koprator-clusterrolebinding
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Values.serviceAccount.name }}
+    namespace: default
+roleRef:
+  kind: ClusterRole
+  name: koprator-clusterrole
+  apiGroup: rbac.authorization.k8s.io
