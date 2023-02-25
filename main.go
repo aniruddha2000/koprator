@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"flag"
-	"log"
 	"net/http"
 	"time"
 
@@ -12,9 +11,9 @@ import (
 	"github.com/aniruddha2000/koprator/pkg/runtime"
 	"github.com/aniruddha2000/koprator/pkg/subscription"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	log "github.com/sirupsen/logrus"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
-	"k8s.io/klog/v2"
 )
 
 var (
@@ -26,42 +25,47 @@ var (
 )
 
 func main() {
-	klog.InitFlags(nil)
 	flag.Parse()
 
 	start := time.Now()
-	klog.Infof("Starting @ %s", start.String())
+	log.Infof("Starting @ %s", start.String())
 
+	// Metrics
 	go func() {
 		http.Handle("/metrics", promhttp.Handler())
 		log.Fatal(http.ListenAndServe(*addr, nil))
 	}()
 
-	klog.Info("Got watcher client...")
+	// Logs
+	log.SetFormatter(&log.JSONFormatter{})
+	log.SetLevel(log.DebugLevel)
 
-	cfg, err := clientcmd.BuildConfigFromFlags(masterURL, kubeconfig)
+	// Run
+	log.Info("Got watcher client...")
+
+	kubernetesCfg, err := clientcmd.BuildConfigFromFlags(masterURL, kubeconfig)
 	if err != nil {
-		klog.Fatalf("Error building kubeconfig: %s", err.Error())
+		log.Fatalf("Error building kubeconfig: %s", err.Error())
 	}
 
-	klog.Info("Building config from flags...")
+	log.Info("Building config from flags...")
 
-	defaultKubernetesClientset, err := kubernetes.NewForConfig(cfg)
+	defaultKubernetesClientset, err := kubernetes.NewForConfig(kubernetesCfg)
 	if err != nil {
-		klog.Fatalf("Error building watcher clientset: %s", err.Error())
+		log.Fatalf("Error building watcher clientset: %s", err.Error())
 	}
 
 	// Context
-	context := context.TODO()
+	ctx := context.TODO()
 
 	// Subscription objects
 	configMapSubscription := &subscription.ConfigMapSubscribtion{
 		Client: defaultKubernetesClientset,
-		Ctx:    context,
+		Ctx:    ctx,
 	}
 	podSubscription := &subscription.PodSubscribtion{
 		Client:               defaultKubernetesClientset,
-		Ctx:                  context,
+		Ctx:                  ctx,
 		ConfigMapSubscribRef: configMapSubscription,
 	}
 
@@ -69,7 +73,7 @@ func main() {
 		configMapSubscription,
 		podSubscription,
 	}); err != nil {
-		klog.Fatalf(err.Error())
+		log.Fatalf("Runloop error: %s", err.Error())
 	}
 }
 

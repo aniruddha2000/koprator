@@ -3,6 +3,10 @@ package subscription
 import (
 	"context"
 	"errors"
+	"fmt"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+	log "github.com/sirupsen/logrus"
 
 	"gopkg.in/yaml.v2"
 	v1 "k8s.io/api/core/v1"
@@ -10,7 +14,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/klog/v2"
 )
 
 type ConfigMapSubscribtion struct {
@@ -21,9 +24,17 @@ type ConfigMapSubscribtion struct {
 	paltformConfigPhase watch.EventType
 }
 
-const (
-	platforConfigMapName      string = "platform-default-configmap"
-	platforConfigMapNamespace string = "kube-system"
+var (
+	platformConfigMapName                   string = "platform-default-configmap"
+	platformConfigMapNamespace              string = "kube-system"
+	prometheusPlatfromConfigAnnotationCount        = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "platform_config_annotation_count",
+		Help: "This tells us the number of annotations in configmap",
+	})
+	prometheusPlatformConfigAvailabilityGuage = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "platform_config_availability",
+		Help: "This tells us weather platform config available",
+	}, []string{"configmap_name", "namespace"})
 )
 
 type PlatformAnnotations struct {
@@ -40,7 +51,7 @@ func isPlatformConfigMap(cm *v1.ConfigMap) (bool, error) {
 		return false, errors.New("empty platform configMap")
 	}
 
-	if cm.Name == platforConfigMapName {
+	if cm.Name == platformConfigMapName {
 		return true, nil
 	}
 	return false, nil
@@ -52,11 +63,13 @@ func (c *ConfigMapSubscribtion) Reconcile(object runtime.Object, event watch.Eve
 
 	if ok, err := isPlatformConfigMap(cm); !ok {
 		if err != nil {
-			klog.Error(err)
+			log.Errorf("Reconcile configmap: isPlatformConfigMap: %v", err)
 		}
 		return
 	}
-	klog.Infof("ConfigMapSubscription event type %s for %s", event, cm.Name)
+	log.WithFields(log.Fields{
+		"namespace": cm.Namespace,
+	}).Infof("ConfigMapSubscription event type %s for %s", event, cm.Name)
 
 	switch event {
 	case watch.Added:
@@ -65,13 +78,17 @@ func (c *ConfigMapSubscribtion) Reconcile(object runtime.Object, event watch.Eve
 		var unmarshalledData PlatformConfig
 		err := yaml.Unmarshal([]byte(rawDefaultString), &unmarshalledData)
 		if err != nil {
-			klog.Error(err)
+			log.Errorf("Reconcile configmap: yaml unmarshal: %v", err)
 			return
 		}
 		c.platformConfig = &unmarshalledData
+		prometheusPlatformConfigAvailabilityGuage.WithLabelValues(cm.Name, cm.Namespace).Set(float64(1))
+		prometheusPlatfromConfigAnnotationCount.Set(float64(len(c.platformConfig.Annotations)))
 
 	case watch.Deleted:
 		c.platformConfig = nil
+		prometheusPlatformConfigAvailabilityGuage.WithLabelValues(cm.Name, cm.Namespace).Set(float64(0))
+		prometheusPlatfromConfigAnnotationCount.Set(0)
 
 	case watch.Modified:
 	}
@@ -82,7 +99,7 @@ func (c *ConfigMapSubscribtion) Subscribe() (watch.Interface, error) {
 
 	c.watcherInterface, err = c.Client.CoreV1().ConfigMaps("").Watch(c.Ctx, metav1.ListOptions{})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("configmap: watcher interface: %v", err)
 	}
 
 	return c.watcherInterface, nil
