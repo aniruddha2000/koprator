@@ -6,8 +6,6 @@ import (
 	"net/http"
 	"time"
 
-	"math/rand"
-
 	"github.com/aniruddha2000/koprator/pkg/runtime"
 	"github.com/aniruddha2000/koprator/pkg/subscription"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -18,7 +16,6 @@ import (
 
 var (
 	minWatchTimeout = 5 * time.Minute
-	timeoutSeconds  = int64(minWatchTimeout.Seconds() * (rand.Float64() + 1.0))
 	masterURL       string
 	kubeconfig      string
 	addr            = flag.String("listen-address", ":8080", "The address to listen on for HTTP requests.")
@@ -32,8 +29,13 @@ func main() {
 
 	// Metrics
 	go func() {
-		http.Handle("/metrics", promhttp.Handler())
-		log.Fatal(http.ListenAndServe(*addr, nil))
+		server := http.Server{
+			Addr:              *addr,
+			Handler:           promhttp.Handler(),
+			ReadHeaderTimeout: minWatchTimeout,
+		}
+		err := server.ListenAndServe()
+		log.Fatalf("Error serving http server at %s: %v", *addr, err)
 	}()
 
 	// Logs
@@ -61,15 +63,13 @@ func main() {
 	// Subscription objects
 	configMapSubscription := &subscription.ConfigMapSubscribtion{
 		Client: defaultKubernetesClientset,
-		Ctx:    ctx,
 	}
 	podSubscription := &subscription.PodSubscribtion{
 		Client:               defaultKubernetesClientset,
-		Ctx:                  ctx,
 		ConfigMapSubscribRef: configMapSubscription,
 	}
 
-	if err := runtime.RunLoop([]subscription.Subscribtion{
+	if err := runtime.RunLoop(ctx, []subscription.Subscription{
 		configMapSubscription,
 		podSubscription,
 	}); err != nil {

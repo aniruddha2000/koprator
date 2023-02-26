@@ -1,4 +1,4 @@
 .vscode/
 bin/
-coredns.yml
+example/coredns.yml
 .idea/

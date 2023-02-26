@@ -34,6 +34,7 @@ linters:
     - funlen
     - dupl
     - paralleltest
+    - gochecknoinits
 
 linters-settings:
   varnamelen:
@@ -44,11 +45,15 @@ linters-settings:
       - v1
       - tt
       - ok
+      - cm
+      - wg
     ignore-decls:
       - t testing.T
   gofumpt:
     extra-rules: false
     lang-version: "1.19"
+  nestif:
+    min-complexity: 6
 
 issues:
   include:

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	log "github.com/sirupsen/logrus"
@@ -16,19 +17,19 @@ import (
 	"k8s.io/client-go/kubernetes"
 )
 
+// ConfigMapSubscribtion defines the attributes for the ConfigMap object reconciliation.
 type ConfigMapSubscribtion struct {
 	watcherInterface    watch.Interface
 	Client              kubernetes.Interface
-	Ctx                 context.Context
 	platformConfig      *PlatformConfig
 	paltformConfigPhase watch.EventType
 }
 
 var (
-	platformConfigMapName                   string = "platform-default-configmap"
-	platformConfigMapNamespace              string = "kube-system"
-	prometheusPlatfromConfigAnnotationCount        = promauto.NewGauge(prometheus.GaugeOpts{
-		Name: "platform_config_annotation_count",
+	platformConfigMapName                   = "platform-default-configmap"
+	platformConfigMapNamespace              = "kube-system"
+	prometheusPlatfromConfigAnnotationCount = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "platform_config_annotation",
 		Help: "This tells us the number of annotations in configmap",
 	})
 	prometheusPlatformConfigAvailabilityGuage = promauto.NewGaugeVec(prometheus.GaugeOpts{
@@ -37,11 +38,13 @@ var (
 	}, []string{"configmap_name", "namespace"})
 )
 
+// PlatformAnnotations define the annotation structure for the ConfigMap.
 type PlatformAnnotations struct {
 	Name  string `yaml:"name"`
 	Value string `yaml:"value"`
 }
 
+// PlatformConfig define the list of annotations in the ConfigMap.
 type PlatformConfig struct {
 	Annotations []PlatformAnnotations `yaml:"annotations"`
 }
@@ -51,14 +54,20 @@ func isPlatformConfigMap(cm *v1.ConfigMap) (bool, error) {
 		return false, errors.New("empty platform configMap")
 	}
 
-	if cm.Name == platformConfigMapName {
+	if cm.Name == platformConfigMapName && cm.Namespace == platformConfigMapNamespace {
 		return true, nil
 	}
 	return false, nil
 }
 
-func (c *ConfigMapSubscribtion) Reconcile(object runtime.Object, event watch.EventType) {
-	cm := object.(*v1.ConfigMap)
+// Reconcile gets the ConfigMap annotations in a Add event and store it in the platformConfig attribute
+// and make it nil in the Delete event.
+func (c *ConfigMapSubscribtion) Reconcile(ctx context.Context, object runtime.Object, event watch.EventType) {
+	cm, ok := object.(*v1.ConfigMap)
+	if !ok {
+		log.Errorf("Want %v but got %v", v1.ConfigMap{}.Kind, cm.Kind)
+	}
+
 	c.paltformConfigPhase = event
 
 	if ok, err := isPlatformConfigMap(cm); !ok {
@@ -94,12 +103,13 @@ func (c *ConfigMapSubscribtion) Reconcile(object runtime.Object, event watch.Eve
 	}
 }
 
-func (c *ConfigMapSubscribtion) Subscribe() (watch.Interface, error) {
+// Subscribe returns watcher Interface of the ConfigMap object on all namespace.
+func (c *ConfigMapSubscribtion) Subscribe(ctx context.Context) (watch.Interface, error) {
 	var err error
 
-	c.watcherInterface, err = c.Client.CoreV1().ConfigMaps("").Watch(c.Ctx, metav1.ListOptions{})
+	c.watcherInterface, err = c.Client.CoreV1().ConfigMaps("").Watch(ctx, metav1.ListOptions{})
 	if err != nil {
-		return nil, fmt.Errorf("configmap: watcher interface: %v", err)
+		return nil, fmt.Errorf("configmap: watcher interface: %w", err)
 	}
 
 	return c.watcherInterface, nil
