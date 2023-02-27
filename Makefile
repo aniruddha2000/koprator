@@ -18,7 +18,11 @@ build:
 
 .PHONY: run
 run:
-	go run main.go
+	go run main.go -kubeconfig=$(HOME)/.kube/config
+
+.PHONY: helm
+helm:
+	helm install koprator chart/koprator
 
 .PHONY: test
 test:
