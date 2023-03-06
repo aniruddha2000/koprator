@@ -3,7 +3,11 @@ package subscription
 import (
 	"context"
 	"errors"
-	"fmt"
+	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/informers"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/tools/cache"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -11,24 +15,19 @@ import (
 
 	"gopkg.in/yaml.v2"
 	v1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/watch"
-	"k8s.io/client-go/kubernetes"
 )
 
-// ConfigMapSubscribtion defines the attributes for the ConfigMap object reconciliation.
-type ConfigMapSubscribtion struct {
-	watcherInterface    watch.Interface
+// ConfigMapSubscription defines the attributes for the ConfigMap object reconciliation.
+type ConfigMapSubscription struct {
 	Client              kubernetes.Interface
 	platformConfig      *PlatformConfig
-	paltformConfigPhase watch.EventType
+	platformConfigPhase cache.DeltaType
 }
 
 var (
 	platformConfigMapName                   = "platform-default-configmap"
 	platformConfigMapNamespace              = "kube-system"
-	prometheusPlatfromConfigAnnotationCount = promauto.NewGauge(prometheus.GaugeOpts{
+	prometheusPlatformConfigAnnotationCount = promauto.NewGauge(prometheus.GaugeOpts{
 		Name: "platform_config_annotation",
 		Help: "This tells us the number of annotations in configmap",
 	})
@@ -62,13 +61,13 @@ func isPlatformConfigMap(cm *v1.ConfigMap) (bool, error) {
 
 // Reconcile gets the ConfigMap annotations in a Add event and store it in the platformConfig attribute
 // and make it nil in the Delete event.
-func (c *ConfigMapSubscribtion) Reconcile(ctx context.Context, object runtime.Object, event watch.EventType) {
+func (c *ConfigMapSubscription) Reconcile(ctx context.Context, object interface{}, event cache.DeltaType) {
 	cm, ok := object.(*v1.ConfigMap)
 	if !ok {
 		log.Errorf("Want %v but got %v", v1.ConfigMap{}.Kind, cm.Kind)
 	}
 
-	c.paltformConfigPhase = event
+	c.platformConfigPhase = event
 
 	if ok, err := isPlatformConfigMap(cm); !ok {
 		if err != nil {
@@ -81,7 +80,7 @@ func (c *ConfigMapSubscribtion) Reconcile(ctx context.Context, object runtime.Ob
 	}).Infof("ConfigMapSubscription event type %s for %s", event, cm.Name)
 
 	switch event {
-	case watch.Added:
+	case cache.Added:
 		rawDefaultString := cm.Data["platform-default"]
 
 		var unmarshalledData PlatformConfig
@@ -92,25 +91,22 @@ func (c *ConfigMapSubscribtion) Reconcile(ctx context.Context, object runtime.Ob
 		}
 		c.platformConfig = &unmarshalledData
 		prometheusPlatformConfigAvailabilityGuage.WithLabelValues(cm.Name, cm.Namespace).Set(float64(1))
-		prometheusPlatfromConfigAnnotationCount.Set(float64(len(c.platformConfig.Annotations)))
+		prometheusPlatformConfigAnnotationCount.Set(float64(len(c.platformConfig.Annotations)))
 
-	case watch.Deleted:
+	case cache.Deleted:
 		c.platformConfig = nil
 		prometheusPlatformConfigAvailabilityGuage.WithLabelValues(cm.Name, cm.Namespace).Set(float64(0))
-		prometheusPlatfromConfigAnnotationCount.Set(0)
-
-	case watch.Modified:
+		prometheusPlatformConfigAnnotationCount.Set(0)
 	}
 }
 
-// Subscribe returns watcher Interface of the ConfigMap object on all namespace.
-func (c *ConfigMapSubscribtion) Subscribe(ctx context.Context) (watch.Interface, error) {
-	var err error
+// Subscribe returns Informer factory of the ConfigMap object on all namespace.
+func (c *ConfigMapSubscription) Subscribe() (informers.SharedInformerFactory, cache.SharedIndexInformer) {
+	informer := informers.NewSharedInformerFactory(c.Client, 10*time.Second)
+	cmInformer := informer.Core().V1().ConfigMaps().Informer()
 
-	c.watcherInterface, err = c.Client.CoreV1().ConfigMaps("").Watch(ctx, metav1.ListOptions{})
-	if err != nil {
-		return nil, fmt.Errorf("configmap: watcher interface: %w", err)
-	}
+	informer.Start(wait.NeverStop)
+	informer.WaitForCacheSync(wait.NeverStop)
 
-	return c.watcherInterface, nil
+	return informer, cmInformer
 }

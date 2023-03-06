@@ -2,12 +2,10 @@ package runtime
 
 import (
 	"context"
-	"fmt"
-	"sync"
-
-	log "github.com/sirupsen/logrus"
-
 	"github.com/aniruddha2000/koprator/pkg/subscription"
+	log "github.com/sirupsen/logrus"
+	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/tools/cache"
 )
 
 // RunLoop traverse each object that satisfy the Subscription Interface and follow the procedure -
@@ -16,31 +14,29 @@ import (
 //
 // 2. Start a go routine and observe any event change in a reconciliation loop and call the Reconcile method
 // for the logic.
-func RunLoop(ctx context.Context, subscriptions []subscription.Subscription) error {
-	log.Info("Inside the Runloop...")
-	var wg sync.WaitGroup
+func RunLoop(ctx context.Context, subscriptions []subscription.Subscription) {
+	log.Info("Inside the Run loop...")
 
+	ch := make(chan bool)
 	for _, subs := range subscriptions {
-		wiface, err := subs.Subscribe(ctx)
-		if err != nil {
-			return fmt.Errorf("subscribe: %w", err)
-		}
+		go func(subs subscription.Subscription, ch chan bool) {
+			informerFactory, objectInformer := subs.Subscribe()
+			objectInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+				AddFunc: func(obj interface{}) {
+					subs.Reconcile(ctx, obj, cache.Added)
+				},
+				UpdateFunc: func(oldObj, newObj interface{}) {
+					subs.Reconcile(ctx, newObj, cache.Updated)
+				},
+				DeleteFunc: func(obj interface{}) {
+					subs.Reconcile(ctx, obj, cache.Deleted)
+				},
+			})
 
-		wg.Add(1)
-		go func(subs subscription.Subscription) {
-			defer wg.Done()
-			for msg := range wiface.ResultChan() {
-				subs.Reconcile(ctx, msg.Object, msg.Type)
-			}
-			// for {
-			//	select {
-			//	case msg := <-wiface.ResultChan():
-			//
-			//	}
-			//}
-		}(subs)
+			informerFactory.Start(wait.NeverStop)
+			informerFactory.WaitForCacheSync(wait.NeverStop)
+		}(subs, ch)
 	}
 
-	wg.Wait()
-	return nil
+	<-ch
 }

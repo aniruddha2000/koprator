@@ -2,13 +2,13 @@ package subscription
 
 import (
 	"context"
+	"k8s.io/client-go/informers"
 
-	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/watch"
+	"k8s.io/client-go/tools/cache"
 )
 
 // Subscription Interface defines the methods for Kubernetes Objects.
 type Subscription interface {
-	Subscribe(ctx context.Context) (watch.Interface, error)
-	Reconcile(ctx context.Context, object runtime.Object, event watch.EventType)
+	Subscribe() (informers.SharedInformerFactory, cache.SharedIndexInformer)
+	Reconcile(ctx context.Context, object interface{}, event cache.DeltaType)
 }
